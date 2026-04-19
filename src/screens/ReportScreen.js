@@ -6,10 +6,11 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';  // ADD THIS - missing import!
 import { uploadToCloudinary } from '../services/cloudinary';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// Cloudinary configuration
+// Cloudinary configuration (only needed if not in cloudinary service)
 const CLOUD_NAME = 'dlbjuvumj';
 const UPLOAD_PRESET = 'ongwediva_reports';
 
@@ -22,36 +23,8 @@ const CATEGORIES = [
   { id: 'environment', name: '🌿 Environment', icon: '🌿', color: '#8BC34A' }
 ];
 
-const compressImage = async (uri) => {
-  const result = await ImageManipulator.manipulateAsync(
-    uri,
-    [{ resize: { width: 1200 } }],
-    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-  );
-  return result.uri;
-};
-
-const uploadToCloudinary = async (imageUri) => {
-  const compressedUri = await compressImage(imageUri);
-  
-  const formData = new FormData();
-  formData.append('file', {
-    uri: compressedUri,
-    type: 'image/jpeg',
-    name: `report_${Date.now()}.jpg`,
-  });
-  formData.append('upload_preset', UPLOAD_PRESET);
-  formData.append('folder', 'ongwediva_reports');
-
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-    { method: 'POST', body: formData }
-  );
-
-  const data = await response.json();
-  if (!data.secure_url) throw new Error('Upload failed');
-  return data.secure_url;
-};
+// REMOVE the compressImage and uploadToCloudinary functions from here
+// They are already in ../services/cloudinary
 
 export default function ReportScreen({ navigation, route }) {
   // Get passed category from route params (if coming from a specific tab)
