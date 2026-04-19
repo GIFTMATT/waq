@@ -1,32 +1,78 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import ReportScreen from './src/screens/ReportScreen';
+import ReportDetailScreen from './src/screens/ReportDetailScreen';
+import AdminPanelScreen from './src/screens/AdminPanelScreen';
+import AnnouncementsScreen from './src/screens/AnnouncementsScreen';
+import VerifyLocationScreen from './src/screens/VerifyLocationScreen';
+import { auth } from './src/services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
-export default function App() {
+const Stack = createNativeStackNavigator();
+
+function AppNavigator() {
+  const [user, setUser] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#fff" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>App is working!</Text>
-      <Text style={styles.subtitle}>If you see this, the problem is in your original code.</Text>
-    </View>
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!user ? (
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="VerifyLocation" component={VerifyLocationScreen} />
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="Report" component={ReportScreen} />
+            <Stack.Screen name="ReportDetail" component={ReportDetailScreen} />
+            <Stack.Screen name="AdminPanel" component={AdminPanelScreen} />
+            <Stack.Screen name="Announcements" component={AnnouncementsScreen} />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
+export default function App() {
+  return <AppNavigator />;
+}
+
 const styles = StyleSheet.create({
-  container: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#1e3c72',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+  loadingText: {
+    marginTop: 10,
     color: '#fff',
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#fff',
-    textAlign: 'center',
-    paddingHorizontal: 20,
+    fontSize: 16,
   },
 });
