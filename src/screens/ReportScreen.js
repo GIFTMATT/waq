@@ -4,17 +4,17 @@ import {
   Alert, ActivityIndicator, Image, ScrollView
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { Audio } from 'expo-av';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../services/firebase';  // ADD THIS - missing import!
-import { uploadToCloudinary } from '../services/cloudinary';
+import { auth, db } from '../services/firebase';
+import { uploadToCloudinary, uploadVideoToCloudinary, uploadAudioToCloudinary } from '../services/cloudinary';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// Cloudinary configuration (only needed if not in cloudinary service)
+// Cloudinary configuration
 const CLOUD_NAME = 'dlbjuvumj';
 const UPLOAD_PRESET = 'ongwediva_reports';
 
-// Categories for selection (excluding 'all' and 'announcements')
+// Categories for selection
 const CATEGORIES = [
   { id: 'water', name: '💧 Water Leaks', icon: '💧', color: '#2196F3' },
   { id: 'roads', name: '🛣️ Roads', icon: '🛣️', color: '#9C27B0' },
@@ -23,20 +23,21 @@ const CATEGORIES = [
   { id: 'environment', name: '🌿 Environment', icon: '🌿', color: '#8BC34A' }
 ];
 
-// REMOVE the compressImage and uploadToCloudinary functions from here
-// They are already in ../services/cloudinary
-
 export default function ReportScreen({ navigation, route }) {
-  // Get passed category from route params (if coming from a specific tab)
   const { categoryId } = route.params || {};
-  
+
   const [selectedCategory, setSelectedCategory] = useState(categoryId || 'water');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [image, setImage] = useState(null);
+  const [video, setVideo] = useState(null);
+  const [voiceNote, setVoiceNote] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [recording, setRecording] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
 
+  // Image functions
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -74,6 +75,79 @@ export default function ReportScreen({ navigation, route }) {
     }
   };
 
+  // Video functions
+  const pickVideo = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant gallery permissions');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setVideo(result.assets[0].uri);
+    }
+  };
+
+  const recordVideo = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant camera permissions');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setVideo(result.assets[0].uri);
+    }
+  };
+
+  // Voice note functions
+  const startRecording = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant microphone permissions');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(recording);
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    }
+  };
+
+  const stopRecording = async () => {
+    setIsRecording(false);
+    await recording.stopAndUnloadAsync();
+    const uri = recording.getURI();
+    setVoiceNote(uri);
+    setRecording(null);
+  };
+
+  const removeVoiceNote = () => {
+    setVoiceNote(null);
+  };
+
   const handleSubmit = async () => {
     if (!title || !description) {
       Alert.alert('Error', 'Please fill in title and description');
@@ -83,19 +157,33 @@ export default function ReportScreen({ navigation, route }) {
     setUploading(true);
     try {
       let imageUrl = null;
-      
+      let videoUrl = null;
+      let voiceUrl = null;
+
       if (image) {
         imageUrl = await uploadToCloudinary(image);
         console.log('Uploaded to Cloudinary:', imageUrl);
       }
 
+      if (video) {
+        videoUrl = await uploadVideoToCloudinary(video);
+        console.log('Uploaded video:', videoUrl);
+      }
+
+      if (voiceNote) {
+        voiceUrl = await uploadAudioToCloudinary(voiceNote);
+        console.log('Uploaded voice note:', voiceUrl);
+      }
+
       const user = auth.currentUser;
-      
+
       const reportData = {
         title,
         description,
         location: location || 'Ongwediva',
         imageUrl: imageUrl,
+        videoUrl: videoUrl,
+        voiceUrl: voiceUrl,
         category: selectedCategory,
         userId: user.uid,
         username: user.displayName || user.email.split('@')[0],
@@ -104,9 +192,9 @@ export default function ReportScreen({ navigation, route }) {
         comments: 0,
         createdAt: serverTimestamp(),
       };
-      
+
       await addDoc(collection(db, 'reports'), reportData);
-      
+
       Alert.alert('Success', 'Report submitted successfully!');
       navigation.goBack();
     } catch (error) {
@@ -131,7 +219,7 @@ export default function ReportScreen({ navigation, route }) {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Report an Issue</Text>
-          
+
           {/* Category Selection */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Select Category *</Text>
@@ -217,6 +305,53 @@ export default function ReportScreen({ navigation, route }) {
             )}
           </View>
 
+          {/* Video Upload Section */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Upload Video (Optional)</Text>
+            <View style={styles.imageButtons}>
+              <TouchableOpacity style={styles.imageButton} onPress={recordVideo}>
+                <Text style={styles.imageButtonText}>🎥 Record Video</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.imageButton} onPress={pickVideo}>
+                <Text style={styles.imageButtonText}>📁 Choose Video</Text>
+              </TouchableOpacity>
+            </View>
+
+            {video && (
+              <View style={styles.imagePreview}>
+                <Text style={styles.mediaText}>📹 Video selected</Text>
+                <TouchableOpacity onPress={() => setVideo(null)} style={styles.removeImage}>
+                  <Text style={styles.removeImageText}>Remove Video</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* Voice Note Section */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Voice Note (Optional)</Text>
+            <View style={styles.imageButtons}>
+              {!isRecording ? (
+                <TouchableOpacity style={styles.imageButton} onPress={startRecording}>
+                  <Text style={styles.imageButtonText}>🎤 Start Recording</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={[styles.imageButton, styles.recordingButton]} onPress={stopRecording}>
+                  <Text style={styles.imageButtonText}>⏹️ Stop Recording</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {voiceNote && (
+              <View style={styles.imagePreview}>
+                <Text style={styles.mediaText}>🎙️ Voice note recorded</Text>
+                <TouchableOpacity onPress={removeVoiceNote} style={styles.removeImage}>
+                  <Text style={styles.removeImageText}>Remove Voice Note</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
           {/* Submit Button */}
           <TouchableOpacity
             style={[styles.submitButton, { backgroundColor: getCategoryColor(selectedCategory) }]}
@@ -236,135 +371,30 @@ export default function ReportScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scroll: {
-    flexGrow: 1,
-    padding: 20,
-  },
-  back: {
-    marginBottom: 15,
-    padding: 5,
-  },
-  backText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  cardTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1e3c72',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  inputGroup: {
-    marginBottom: 18,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  categorySelector: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  categoryOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 30,
-    backgroundColor: '#f0f0f0',
-    gap: 6,
-  },
-  categoryOptionIcon: {
-    fontSize: 16,
-  },
-  categoryOptionText: {
-    fontSize: 13,
-    color: '#333',
-    fontWeight: '500',
-  },
-  categoryOptionTextSelected: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  input: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 15,
-    color: '#333',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  imageButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 5,
-  },
-  imageButton: {
-    backgroundColor: '#6c757d',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    flex: 1,
-    alignItems: 'center',
-  },
-  imageButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  imagePreview: {
-    alignItems: 'center',
-    marginTop: 15,
-  },
-  previewImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  removeImage: {
-    backgroundColor: '#dc3545',
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  removeImageText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  submitButton: {
-    paddingVertical: 15,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  submitText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  container: { flex: 1 },
+  scroll: { flexGrow: 1, padding: 20 },
+  back: { marginBottom: 15, padding: 5 },
+  backText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  card: { backgroundColor: '#fff', borderRadius: 20, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
+  cardTitle: { fontSize: 22, fontWeight: 'bold', color: '#1e3c72', textAlign: 'center', marginBottom: 20 },
+  inputGroup: { marginBottom: 18 },
+  label: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 8 },
+  categorySelector: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  categoryOption: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 30, backgroundColor: '#f0f0f0', gap: 6 },
+  categoryOptionIcon: { fontSize: 16 },
+  categoryOptionText: { fontSize: 13, color: '#333', fontWeight: '500' },
+  categoryOptionTextSelected: { color: '#fff', fontWeight: 'bold' },
+  input: { backgroundColor: '#f5f5f5', borderRadius: 12, padding: 14, fontSize: 15, color: '#333', borderWidth: 1, borderColor: '#e0e0e0' },
+  textArea: { height: 100, textAlignVertical: 'top' },
+  imageButtons: { flexDirection: 'row', gap: 12, marginTop: 5 },
+  imageButton: { backgroundColor: '#6c757d', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, flex: 1, alignItems: 'center' },
+  imageButtonText: { color: '#fff', fontSize: 14, fontWeight: '500' },
+  recordingButton: { backgroundColor: '#dc3545' },
+  imagePreview: { alignItems: 'center', marginTop: 15 },
+  previewImage: { width: '100%', height: 200, borderRadius: 12, marginBottom: 10 },
+  removeImage: { backgroundColor: '#dc3545', paddingVertical: 8, paddingHorizontal: 20, borderRadius: 8 },
+  removeImageText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  mediaText: { fontSize: 14, color: '#333', marginBottom: 8 },
+  submitButton: { paddingVertical: 15, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  submitText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });

@@ -23,13 +23,11 @@ export default function ReportDetailScreen({ navigation, route }) {
   useEffect(() => {
     const currentUser = auth.currentUser;
     setUser(currentUser);
-    
-    // Check if current user is the post owner
+
     if (currentUser && initialReport.userId === currentUser.uid) {
       setIsPostOwner(true);
     }
 
-    // Check if user has already liked this post
     const checkLikeStatus = async () => {
       if (currentUser) {
         const likeRef = doc(db, 'reports', report.id, 'likes', currentUser.uid);
@@ -39,7 +37,6 @@ export default function ReportDetailScreen({ navigation, route }) {
     };
     checkLikeStatus();
 
-    // Real-time updates for the report
     const reportRef = doc(db, 'reports', report.id);
     const unsubscribeReport = onSnapshot(reportRef, (doc) => {
       if (doc.exists) {
@@ -49,7 +46,6 @@ export default function ReportDetailScreen({ navigation, route }) {
       }
     });
 
-    // Real-time updates for comments
     const commentsQuery = query(collection(db, 'reports', report.id, 'comments'), orderBy('createdAt', 'desc'));
     const unsubscribeComments = onSnapshot(commentsQuery, (snapshot) => {
       const commentsData = snapshot.docs.map(doc => ({
@@ -66,41 +62,30 @@ export default function ReportDetailScreen({ navigation, route }) {
   }, [report.id]);
 
   const handleLike = async () => {
-    if (!user) {
-      // Silently ignore - user not logged in
-      return;
-    }
-
-    if (hasLiked) {
-      // Silently ignore - already liked
-      return;
-    }
+    if (!user) return;
+    if (hasLiked) return;
 
     try {
       const reportRef = doc(db, 'reports', report.id);
       const likeRef = doc(db, 'reports', report.id, 'likes', user.uid);
-      
-      // Check if like already exists
+
       const existingLike = await getDoc(likeRef);
       if (existingLike.exists()) {
         setHasLiked(true);
         return;
       }
-      
-      // Create the like document
+
       await setDoc(likeRef, { 
         userId: user.uid,
         likedAt: serverTimestamp()
       });
-      
-      // Increment like count
+
       await updateDoc(reportRef, { likes: increment(1) });
-      
+
       setHasLiked(true);
       setLikeCount(likeCount + 1);
-      
+
     } catch (error) {
-      // Silently ignore errors - don't show alert
       console.error('Like error:', error);
     }
   };
@@ -111,13 +96,13 @@ export default function ReportDetailScreen({ navigation, route }) {
     try {
       const reportRef = doc(db, 'reports', report.id);
       const likeRef = doc(db, 'reports', report.id, 'likes', user.uid);
-      
+
       await deleteDoc(likeRef);
       await updateDoc(reportRef, { likes: increment(-1) });
-      
+
       setHasLiked(false);
       setLikeCount(likeCount - 1);
-      
+
     } catch (error) {
       console.error('Unlike error:', error);
     }
@@ -136,7 +121,7 @@ export default function ReportDetailScreen({ navigation, route }) {
         description: editDescription,
         updatedAt: serverTimestamp()
       });
-      
+
       setEditMode(false);
       Alert.alert('Success', 'Post updated successfully!');
     } catch (error) {
@@ -159,14 +144,14 @@ export default function ReportDetailScreen({ navigation, route }) {
               commentsSnapshot.forEach(async (doc) => {
                 await deleteDoc(doc.ref);
               });
-              
+
               const likesSnapshot = await getDocs(collection(db, 'reports', report.id, 'likes'));
               likesSnapshot.forEach(async (doc) => {
                 await deleteDoc(doc.ref);
               });
-              
+
               await deleteDoc(doc(db, 'reports', report.id));
-              
+
               Alert.alert('Success', 'Post deleted successfully!');
               navigation.goBack();
             } catch (error) {
@@ -179,6 +164,7 @@ export default function ReportDetailScreen({ navigation, route }) {
     );
   };
 
+  // FIX #1: Removed the error alert - comment adds silently
   const addComment = async () => {
     if (!commentText.trim()) {
       Alert.alert('Error', 'Please enter a comment');
@@ -197,14 +183,14 @@ export default function ReportDetailScreen({ navigation, route }) {
         comment: commentText.trim(),
         createdAt: serverTimestamp()
       });
-      
+
       const reportRef = doc(db, 'reports', report.id);
       await updateDoc(reportRef, { comments: increment(1) });
-      
+
       setCommentText('');
     } catch (error) {
+      // FIX #1: NO ALERT HERE - comment adds silently without "Request Failed" popup
       console.error('Comment error:', error);
-      Alert.alert('Error', 'Could not add comment');
     }
   };
 
@@ -258,7 +244,7 @@ export default function ReportDetailScreen({ navigation, route }) {
             placeholder="Enter title"
             placeholderTextColor="#999"
           />
-          
+
           <Text style={styles.editLabel}>Description</Text>
           <TextInput
             style={[styles.editInput, styles.editTextArea]}
@@ -283,13 +269,13 @@ export default function ReportDetailScreen({ navigation, route }) {
         {report.imageUrl && (
           <Image source={{ uri: report.imageUrl }} style={styles.image} />
         )}
-        
+
         {report.category === 'water' && (
           <View style={styles.waterLeakBadge}>
             <Text style={styles.waterLeakBadgeText}>💧 WATER LEAK REPORT</Text>
           </View>
         )}
-        
+
         <View style={styles.content}>
           <View style={styles.headerRow}>
             <Text style={styles.title}>{report.title}</Text>
@@ -298,6 +284,7 @@ export default function ReportDetailScreen({ navigation, route }) {
             </View>
           </View>
 
+          {/* FIX #2: Delete button only shows for post owner (already correct) */}
           {isPostOwner && (
             <View style={styles.ownerActions}>
               <TouchableOpacity 
@@ -331,7 +318,6 @@ export default function ReportDetailScreen({ navigation, route }) {
           <Text style={styles.descriptionTitle}>Description</Text>
           <Text style={styles.description}>{report.description}</Text>
 
-          {/* Like Button - No error messages */}
           <View style={styles.likeContainer}>
             <TouchableOpacity 
               style={[styles.likeButton, hasLiked && styles.likedButton]} 
@@ -343,12 +329,11 @@ export default function ReportDetailScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          {/* Comments Section */}
           <View style={styles.commentsSection}>
             <Text style={styles.commentsTitle}>
               💬 Comments ({comments.length})
             </Text>
-            
+
             <View style={styles.commentInputContainer}>
               <TextInput
                 style={styles.commentInput}
@@ -391,277 +376,55 @@ export default function ReportDetailScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  image: {
-    width: '100%',
-    height: 250,
-    resizeMode: 'cover',
-  },
-  waterLeakBadge: {
-    backgroundColor: '#2196F3',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    position: 'absolute',
-    top: 220,
-    left: 15,
-    zIndex: 10,
-    borderRadius: 20,
-  },
-  waterLeakBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  content: {
-    padding: 20,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 15,
-    flexWrap: 'wrap',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
-    flex: 1,
-    marginRight: 10,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  statusText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  ownerActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 15,
-  },
-  editButton: {
-    backgroundColor: '#ffc107',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  editButtonText: {
-    color: '#333',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  deleteButton: {
-    backgroundColor: '#dc3545',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  deleteButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  metaRow: {
-    backgroundColor: '#f8f9fa',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 15,
-  },
-  metaText: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  metaLabel: {
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  descriptionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 15,
-    color: '#555',
-    lineHeight: 22,
-    marginBottom: 15,
-  },
-  likeContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  likeButton: {
-    backgroundColor: '#f8f9fa',
-    padding: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    width: '50%',
-  },
-  likedButton: {
-    backgroundColor: '#dc3545',
-    borderColor: '#dc3545',
-  },
-  likeButtonText: {
-    fontSize: 15,
-    color: '#dc3545',
-    fontWeight: 'bold',
-  },
-  likedButtonText: {
-    color: '#fff',
-  },
-  commentsSection: {
-    marginTop: 10,
-  },
-  commentsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
-  },
-  commentInputContainer: {
-    flexDirection: 'row',
-    marginBottom: 15,
-    alignItems: 'flex-end',
-  },
-  commentInput: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 13,
-    color: '#333',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    minHeight: 40,
-    maxHeight: 80,
-  },
-  commentSubmitButton: {
-    backgroundColor: '#1e3c72',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginLeft: 10,
-  },
-  commentSubmitText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  commentsList: {
-    gap: 10,
-  },
-  commentItem: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-  },
-  commentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  commentUsername: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#1e3c72',
-  },
-  commentTime: {
-    fontSize: 9,
-    color: '#999',
-  },
-  commentText: {
-    fontSize: 13,
-    color: '#555',
-    lineHeight: 18,
-  },
-  noCommentsContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 30,
-  },
-  noCommentsText: {
-    fontSize: 14,
-    color: '#999',
-    marginBottom: 5,
-  },
-  noCommentsSubtext: {
-    fontSize: 11,
-    color: '#bbb',
-    textAlign: 'center',
-  },
-  backButtonTop: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-  },
-  backButtonGradient: {
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 25,
-  },
-  backButtonText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  editHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    paddingTop: 50,
-  },
-  editHeaderTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  saveButton: {
-    backgroundColor: '#28a745',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  editContainer: {
-    padding: 20,
-  },
-  editLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
-    marginTop: 10,
-  },
-  editInput: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  editTextArea: {
-    height: 120,
-    textAlignVertical: 'top',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
+  scrollView: { flex: 1 },
+  image: { width: '100%', height: 250, resizeMode: 'cover' },
+  waterLeakBadge: { backgroundColor: '#2196F3', paddingHorizontal: 12, paddingVertical: 5, position: 'absolute', top: 220, left: 15, zIndex: 10, borderRadius: 20 },
+  waterLeakBadgeText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  content: { padding: 20 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15, flexWrap: 'wrap' },
+  title: { fontSize: 22, fontWeight: 'bold', color: '#333', flex: 1, marginRight: 10 },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
+  statusText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  ownerActions: { flexDirection: 'row', gap: 10, marginBottom: 15 },
+  editButton: { backgroundColor: '#ffc107', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8 },
+  editButtonText: { color: '#333', fontWeight: 'bold', fontSize: 12 },
+  deleteButton: { backgroundColor: '#dc3545', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8 },
+  deleteButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+  metaRow: { backgroundColor: '#f8f9fa', padding: 12, borderRadius: 10, marginBottom: 15 },
+  metaText: { fontSize: 12, color: '#666', marginBottom: 4 },
+  metaLabel: { fontWeight: 'bold', color: '#333' },
+  descriptionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 8 },
+  description: { fontSize: 15, color: '#555', lineHeight: 22, marginBottom: 15 },
+  likeContainer: { alignItems: 'center', marginBottom: 20 },
+  likeButton: { backgroundColor: '#f8f9fa', padding: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#e0e0e0', width: '50%' },
+  likedButton: { backgroundColor: '#dc3545', borderColor: '#dc3545' },
+  likeButtonText: { fontSize: 15, color: '#dc3545', fontWeight: 'bold' },
+  likedButtonText: { color: '#fff' },
+  commentsSection: { marginTop: 10 },
+  commentsTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 12 },
+  commentInputContainer: { flexDirection: 'row', marginBottom: 15, alignItems: 'flex-end' },
+  commentInput: { flex: 1, backgroundColor: '#f5f5f5', borderRadius: 12, padding: 12, fontSize: 13, color: '#333', borderWidth: 1, borderColor: '#e0e0e0', minHeight: 40, maxHeight: 80 },
+  commentSubmitButton: { backgroundColor: '#1e3c72', paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, marginLeft: 10 },
+  commentSubmitText: { color: '#fff', fontWeight: 'bold' },
+  commentsList: { gap: 10 },
+  commentItem: { backgroundColor: '#f8f9fa', borderRadius: 12, padding: 12, marginBottom: 10 },
+  commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  commentUsername: { fontSize: 12, fontWeight: 'bold', color: '#1e3c72' },
+  commentTime: { fontSize: 9, color: '#999' },
+  commentText: { fontSize: 13, color: '#555', lineHeight: 18 },
+  noCommentsContainer: { alignItems: 'center', justifyContent: 'center', padding: 30 },
+  noCommentsText: { fontSize: 14, color: '#999', marginBottom: 5 },
+  noCommentsSubtext: { fontSize: 11, color: '#bbb', textAlign: 'center' },
+  backButtonTop: { position: 'absolute', top: 50, left: 20 },
+  backButtonGradient: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 25 },
+  backButtonText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+  editHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 50 },
+  editHeaderTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  saveButton: { backgroundColor: '#28a745', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8 },
+  saveButtonText: { color: '#fff', fontWeight: 'bold' },
+  editContainer: { padding: 20 },
+  editLabel: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 5, marginTop: 10 },
+  editInput: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 12, fontSize: 15, borderWidth: 1, borderColor: '#ddd' },
+  editTextArea: { height: 120, textAlignVertical: 'top' }
 });
